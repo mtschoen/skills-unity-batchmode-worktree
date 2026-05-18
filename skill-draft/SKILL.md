@@ -21,7 +21,7 @@ Unity locks `Library/` per-Editor, so two Editor processes can't share a project
 
 ## Layout
 
-```
+```text
 <ProjectRoot>/
 ├── <project>/     <- user's worktree, branch `main`, Editor lives here
 │   └── <project>/ <- Unity project root
@@ -37,11 +37,13 @@ Unity locks `Library/` per-Editor, so two Editor processes can't share a project
 The Editor is open the entire session, so "Editor running" is not a signal. Lock state = git state + conversation.
 
 **User's worktree is LOCKED if any of these:**
+
 1. `git status` in their tree shows uncommitted changes that aren't yours
 2. They said "hold on", "I'm testing", "don't touch anything", or equivalent
 3. **Default when no handoff has been established this turn** — absence of permission is a lock
 
 **Handed off (safe to write) only when all hold:**
+
 - Explicit authorization *this turn* ("merge it", "go ahead", "I'm ready")
 - Their `git status` is clean, or dirty state is approved-to-overwrite
 - They haven't since said anything that re-locks
@@ -63,7 +65,7 @@ Mid-session rollback only works **before** the squash. If you need a pre-squash 
 
 Lead with the user-facing change. Put agent-specific context in an `Agent notes:` trailer — design decisions, things tried and discarded, convention fix-ups, known follow-ups. Propose the message before they commit.
 
-```
+```text
 Implement full combat system (melee, projectile, dash, block, heal, nuke)
 
 Agent notes:
@@ -122,7 +124,7 @@ When dispatching parallel subagents on a Unity project, **do not** use the `Agen
 
 Instead, **pre-provision a small pool of long-lived sibling worktrees**, each with its own warm `Library/`, and have agents `git checkout` the branch they need:
 
-```
+```text
 <ProjectRoot>/
 ├── liminal/      <- user's, branch main, warm Library
 ├── liminal2/     <- yours, branch dev, warm Library
@@ -133,6 +135,7 @@ Instead, **pre-provision a small pool of long-lived sibling worktrees**, each wi
 Each pool slot is created once with `git worktree add`, opened in Unity once to populate `Library/`, and then reused across sessions. Agents do `git fetch && git checkout <branch>` inside their assigned slot — Unity reimports only the files that actually changed, which is fast.
 
 **Rules for the pool:**
+
 - One agent per slot at a time. The Unity Library lock still applies — never run two batch-mode processes against the same slot.
 - Agents must reset/clean their slot before checking out a new branch (`git reset --hard && git clean -fd`) so leftover state from a previous session doesn't leak.
 - Don't delete the pool slots between sessions. The whole point is keeping `Library/` warm.
