@@ -1,0 +1,16 @@
+# Eval workspace (generated locally, never shipped)
+workspace/
+
+# Unity batch-mode output (the skill routes test output here)
+TestResults/
+test-log.txt
+TestResults*.xml
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# OS
+.DS_Store
+Thumbs.db
