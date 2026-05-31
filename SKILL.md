@@ -88,7 +88,7 @@ Agent notes:
 
 ## Pre-Session Checklist
 
-1. **Read `<user-worktree>/<project>/CLAUDE.md`** — project conventions (naming, architecture, test rules). Skipping it has caused convention-violation cleanup commits in past sessions.
+1. **Read `<user-worktree>/<project>/AGENTS.md` (or `CLAUDE.md`)** — project conventions (naming, architecture, test rules). Skipping it has caused convention-violation cleanup commits in past sessions.
 2. **`git status` in BOTH worktrees.** Unstaged changes you didn't make this session = STOP and ask.
 3. **`git log --oneline main..dev` and `dev..main`.** Know how the branches have diverged.
 4. **Confirm `<your-worktree>/TestResults/` exists and is gitignored.**
@@ -171,4 +171,4 @@ A reservation is advisory — a sticky note, not a lock. If you find a stale mar
 | Commit LF/CRLF-only diff | `git checkout --` to discard | Commit the churn |
 | Resolve `fileID` conflict | Match fileID → component type in prefab YAML | Pick one side blindly |
 | New asset | Stage `<file>` + `<file>.meta` | Commit one without the other |
-| Start a session | Read `CLAUDE.md`, `git status` both trees, check divergence | Start editing blind |
+| Start a session | Read `AGENTS.md` (or `CLAUDE.md`), `git status` both trees, check divergence | Start editing blind |
