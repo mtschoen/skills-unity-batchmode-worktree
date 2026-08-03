@@ -35,7 +35,7 @@ Runs Unity Test Framework EditMode tests. Expected runtime: 60–180s.
 
 ## PlayMode tests
 
-Same pattern, `-testPlatform PlayMode`. Expected runtime: 120–300s (cold reimport dominates). Needs a graphics-capable context on some packages — drop `-nographics` if you hit rendering errors.
+Same pattern, `-testPlatform PlayMode`. Expected runtime: 120–300s (cold reimport dominates). The command below omits `-nographics` by default: PlayMode actually renders frames, and some packages need a graphics-capable context to do that - adding `-nographics` back is what causes rendering errors, not what fixes them.
 
 ```bash
 "$UNITY" -batchmode \
