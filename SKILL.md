@@ -32,6 +32,8 @@ Unity locks `Library/` per-Editor, so two Editor processes can't share a project
 
 `dev` is a **scratch branch**, not long-lived. It gets squash-merged into `main` at sync points and immediately reset.
 
+The inner `<project>/` nesting shown above depends on where the Unity project root sits inside the repo - some repos put the Unity project at the repo root instead, in which case each worktree *is* the Unity project root with no extra nesting (see the flat `<project>2/`, `<project>3/` naming under Parallel Agents below). Check for `Assets/`/`ProjectSettings/` directly under the worktree root before assuming a nested layout.
+
 ## Lock State
 
 The Editor is open the entire session, so "Editor running" is not a signal. Lock state = git state + conversation.
@@ -126,10 +128,10 @@ Instead, **pre-provision a small pool of long-lived sibling worktrees**, each wi
 
 ```text
 <ProjectRoot>/
-├── liminal/      <- user's, branch main, warm Library
-├── liminal2/     <- yours, branch dev, warm Library
-├── liminal3/     <- agent pool slot, warm Library
-└── liminal4/     <- agent pool slot, warm Library
+├── <project>/      <- user's, branch main, warm Library
+├── <project>2/     <- yours, branch dev, warm Library
+├── <project>3/     <- agent pool slot, warm Library
+└── <project>4/     <- agent pool slot, warm Library
 ```
 
 Each pool slot is created once with `git worktree add`, opened in Unity once to populate `Library/`, and then reused across sessions. Agents do `git fetch && git checkout <branch>` inside their assigned slot - Unity reimports only the files that actually changed, which is fast.
@@ -143,14 +145,15 @@ Each pool slot is created once with `git worktree add`, opened in Unity once to 
 
 ### Reserving a warm worktree
 
-Pool slots are shared across sessions. Before doing anything in a slot, **claim it with a reservation marker** so a parallel session (or future-you) doesn't pick the same slot and stomp on in-progress work:
+Pool slots are shared across sessions. Before doing anything in a slot, **claim it with a reservation marker** so a parallel session (or future-you) doesn't pick the same slot and stomp on in-progress work. The marker is the baseline mechanism and works on its own - survey, claim, prep, release - with no other tooling required. If the `project-lock` skill is installed, layer it in as an additional, optional step: acquire/release a lock on the slot for machine-enforced write coordination on top of the marker. Treat the two as complementary, not redundant, when both are available - `.claude-reserved` says "this pool slot is spoken for" (survives across sessions, human-readable, advisory); `project-lock`, when present, is a stronger write-coordination mechanism that other agents' tooling checks before editing. A slot can carry a stale-but-harmless reservation marker with no lock at all; when a lock exists, treat the lock (not the marker) as the authority on whether it's currently safe to write.
 
-1. **Survey.** `git worktree list` to enumerate slots; for each candidate check `ls <slot>/.claude-reserved` and `git -C <slot> status -sb`. A slot is free only if there's no marker **and** the working tree is clean. Detached HEAD at an older commit is fine - that's the warm-pool resting state.
-2. **Claim.** Write `<slot>/.claude-reserved` with: session date, branch about to be checked out, plan/task reference, and expected duration. One short file. Never stage or commit it (add `.claude-reserved` to `.git/info/exclude` if it isn't already globally ignored).
-3. **Prep.** In the slot: `git fetch && git reset --hard && git clean -fd`, then `git checkout -B <branch> origin/main` (or the needed base). Unity will reimport only changed files on the next batch-mode run - `Library/` stays warm.
-4. **Release.** When the work is merged (or abandoned), delete `.claude-reserved` and reset the slot back to a clean detached state at `main` so the next session finds it warm and obviously free. If handing a branch off mid-stream, leave the marker in place and update its contents to describe the handoff.
+1. **Survey.** `git worktree list` to enumerate slots; for each candidate check `ls <slot>/.claude-reserved` and `git -C <slot> status -sb`. A slot is free only if there's no marker **and** the working tree is clean. If the `project-lock` skill is installed, also check for an active lock on the slot (`python <project-lock script> check <slot>`, or the absence of a `<slot>/.agent-lock/` directory) and treat a locked slot as not free even if it has no marker. Detached HEAD at an older commit is fine - that's the warm-pool resting state.
+2. **Claim.** Write `<slot>/.claude-reserved` with: session date, branch about to be checked out, plan/task reference, and expected duration. One short file. Never stage or commit it (add `.claude-reserved` to `.git/info/exclude` if it isn't already globally ignored). This step can happen before or independently of acquiring a lock - creating the marker doesn't touch the slot's tracked working tree.
+3. **Lock (optional - only if `project-lock` is installed).** Acquire the `project-lock` on the slot path (`python <project-lock script> acquire <slot> --reason "<task>" --duration <estimate>`) before you do anything in step 4 that mutates the slot - reset, clean, checkout, or file edits. A lock's jurisdiction is the nearest enclosing Git worktree, so each pool slot needs its own - acquiring on the pool root or a sibling slot does nothing for this one. If `project-lock` isn't installed, skip this step; the marker from step 2 is your coordination mechanism and the protocol still holds together without it.
+4. **Prep.** In the slot: `git fetch && git reset --hard && git clean -fd`, then `git checkout -B <branch> origin/main` (or the needed base). This is the first step that actually mutates the slot, so if you acquired a lock in step 3, it must already be held before you run these commands. Unity will reimport only changed files on the next batch-mode run - `Library/` stays warm.
+5. **Release.** When the work is merged (or abandoned): if you hold a `project-lock`, release it first, then delete `.claude-reserved` and reset the slot back to a clean detached state at `main` so the next session finds it warm and obviously free. If handing a branch off mid-stream, leave the marker in place (renew or release the lock per the handoff, if one is held) and update the marker's contents to describe the handoff.
 
-A reservation is advisory - a sticky note, not a lock. If you find a stale marker (older than ~24h with no activity on its branch), it's probably abandoned; flag it to the user before overwriting.
+A reservation marker is advisory on its own - a sticky note, not a lock - but it's a complete protocol by itself when `project-lock` isn't in play. If you find a stale marker (older than ~24h with no activity on its branch) with no live `project-lock` on that slot (or no `project-lock` installed at all), it's probably abandoned; flag it to the user before overwriting.
 
 ## Gotchas
 
@@ -165,7 +168,7 @@ A reservation is advisory - a sticky note, not a lock. If you find a stale marke
 | Check user's worktree lock state | `git status` in their tree + recent conversation; ask if unsure | Rely on `Library/UnityLockfile` (Editor is always open) |
 | Write to user's worktree | Only with explicit this-turn authorization | Treat prior authorization as standing |
 | Run Unity batch mode | `-logFile <TestResults>/<name>.log`, record shell id | Default log path, or second Unity against same worktree |
-| Read user's Editor error | `tail` the external `Editor.log` | Read files inside user's worktree |
+| Read user's Editor error | `tail` the external `Editor.log` | Grep the user's source to localize an error |
 | Sync dev ↔ main | Squash-merge then `git reset --hard main` on dev | Long-lived dev, rebases, force-pushes, `git merge main` into dev |
 | In-place text replace | `Edit` tool | `sed -i` on Windows Git Bash |
 | Commit LF/CRLF-only diff | `git checkout --` to discard | Commit the churn |
