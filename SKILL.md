@@ -151,11 +151,22 @@ Pool slots are shared across sessions. Before doing anything in a slot, **claim 
 2. **Claim.** Write `<slot>/.worktree-reserved` with content, not just an empty touch, so the marker is self-documenting - identifying who reserved the slot and leaving a breadcrumb if the session is abandoned:
    ```
    worktree pool-slot reservation (unity-batchmode-worktree skill)
-   reserved-by: <harness + session id, e.g. claude-code session 83c40206>
-   reserved-at: <ISO8601 UTC timestamp>
+   reserved-by: <agent harness and session id, e.g. "opencode session 7f3a9c12">
+   reserved-at: <ISO 8601 UTC timestamp, e.g. 2026-08-04T21:40:00Z>
    branch: <branch about to be checked out>
    task: <plan/task reference>
    stale-after: 24h - if this is older and the owning session is gone, it is safe to delete
+   ```
+   `reserved-by` is agent-agnostic: any harness name plus its session/instance id (`claude-code session 83c40206`, `opencode session 7f3a9c12`), or `user@host` for a manual, non-agent reservation. `reserved-at` is always ISO 8601 UTC in `YYYY-MM-DDTHH:MM:SSZ` form, so markers compare correctly across machines in different time zones.
+
+   Filled-in example:
+   ```
+   worktree pool-slot reservation (unity-batchmode-worktree skill)
+   reserved-by: opencode session 7f3a9c12
+   reserved-at: 2026-08-04T21:40:00Z
+   branch: fix/worktree-reserved-marker
+   task: finalize .worktree-reserved marker spec across three PRs
+   stale-after: 24h - safe to delete if reserved-at is older and the owning session is gone
    ```
    One short file. Never stage or commit it (add `.worktree-reserved` to `.git/info/exclude` if it isn't already globally ignored). This step can happen before or independently of acquiring a lock - creating the marker doesn't touch the slot's tracked working tree.
 3. **Lock (optional - only if `project-lock` is installed).** Acquire the `project-lock` on the slot path (`python <project-lock script> acquire <slot> --reason "<task>" --duration <estimate>`) before you do anything in step 4 that mutates the slot - reset, clean, checkout, or file edits. A lock's jurisdiction is the nearest enclosing Git worktree, so each pool slot needs its own - acquiring on the pool root or a sibling slot does nothing for this one. If `project-lock` isn't installed, skip this step; the marker from step 2 is your coordination mechanism and the protocol still holds together without it.
