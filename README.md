@@ -1,6 +1,6 @@
 # unity-batchmode-worktree
 
-An agent skill for collaborating on a Unity project where the user keeps the Editor open in one git worktree and the agent works in a second via batch mode — working around Unity's per-Editor `Library/` lock without two Editors fighting over one project.
+A skill for collaborating on a Unity project where the user keeps the Editor open in one git worktree and the agent works in a second via batch mode — working around Unity's per-Editor `Library/` lock without two Editors fighting over one project.
 
 ## When it fires
 
