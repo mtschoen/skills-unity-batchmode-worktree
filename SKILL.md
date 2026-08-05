@@ -90,7 +90,7 @@ Agent notes:
 
 ## Pre-Session Checklist
 
-1. **Read `<user-worktree>/<project>/AGENTS.md` (or `CLAUDE.md`)** - project conventions (naming, architecture, test rules). Skipping it has caused convention-violation cleanup commits in past sessions.
+1. **Read `<user-worktree>/<project>/AGENTS.md`** - project conventions (naming, architecture, test rules). Skipping it has caused convention-violation cleanup commits in past sessions.
 2. **`git status` in BOTH worktrees.** Unstaged changes you didn't make this session = STOP and ask.
 3. **`git log --oneline main..dev` and `dev..main`.** Know how the branches have diverged.
 4. **Confirm `<your-worktree>/TestResults/` exists and is gitignored.**
@@ -145,15 +145,35 @@ Each pool slot is created once with `git worktree add`, opened in Unity once to 
 
 ### Reserving a warm worktree
 
-Pool slots are shared across sessions. Before doing anything in a slot, **claim it with a reservation marker** so a parallel session (or future-you) doesn't pick the same slot and stomp on in-progress work. The marker is the baseline mechanism and works on its own - survey, claim, prep, release - with no other tooling required. If the `project-lock` skill is installed, layer it in as an additional, optional step: acquire/release a lock on the slot for machine-enforced write coordination on top of the marker. Treat the two as complementary, not redundant, when both are available - `.claude-reserved` says "this pool slot is spoken for" (survives across sessions, human-readable, advisory); `project-lock`, when present, is a stronger write-coordination mechanism that other agents' tooling checks before editing. A slot can carry a stale-but-harmless reservation marker with no lock at all; when a lock exists, treat the lock (not the marker) as the authority on whether it's currently safe to write.
+Pool slots are shared across sessions. Before doing anything in a slot, **claim it with a reservation marker** so a parallel session (or future-you) doesn't pick the same slot and stomp on in-progress work. The marker is the baseline mechanism and works on its own - survey, claim, prep, release - with no other tooling required. If the `project-lock` skill is installed, layer it in as an additional, optional step: acquire/release a lock on the slot for machine-enforced write coordination on top of the marker. Treat the two as complementary, not redundant, when both are available - `.worktree-reserved` says "this pool slot is spoken for" (survives across sessions, self-documenting - its content records who reserved it and when, so an abandoned marker still leaves a breadcrumb - advisory); `project-lock`, when present, is a stronger write-coordination mechanism that other agents' tooling checks before editing. A slot can carry a stale-but-harmless reservation marker with no lock at all; when a lock exists, treat the lock (not the marker) as the authority on whether it's currently safe to write.
 
-1. **Survey.** `git worktree list` to enumerate slots; for each candidate check `ls <slot>/.claude-reserved` and `git -C <slot> status -sb`. A slot is free only if there's no marker **and** the working tree is clean. If the `project-lock` skill is installed, also check for an active lock on the slot (`python <project-lock script> check <slot>`, or the absence of a `<slot>/.agent-lock/` directory) and treat a locked slot as not free even if it has no marker. Detached HEAD at an older commit is fine - that's the warm-pool resting state.
-2. **Claim.** Write `<slot>/.claude-reserved` with: session date, branch about to be checked out, plan/task reference, and expected duration. One short file. Never stage or commit it (add `.claude-reserved` to `.git/info/exclude` if it isn't already globally ignored). This step can happen before or independently of acquiring a lock - creating the marker doesn't touch the slot's tracked working tree.
+1. **Survey.** `git worktree list` to enumerate slots; for each candidate check `ls <slot>/.worktree-reserved` and, if it exists, read its contents to see who holds it (`reserved-by`), when it was claimed (`reserved-at`), and whether it's past its own `stale-after` window; also check `git -C <slot> status -sb`. A slot is free if there's no marker, or the marker is past `stale-after` with no live owner (see the reap note below) - **and** the working tree is clean. If the `project-lock` skill is installed, also check for an active lock on the slot (`python <project-lock script> check <slot>`, or the absence of a `<slot>/.agent-lock/` directory) and treat a locked slot as not free even if it has no marker. Detached HEAD at an older commit is fine - that's the warm-pool resting state.
+2. **Claim.** Write `<slot>/.worktree-reserved` with content, not just an empty touch, so the marker is self-documenting - identifying who reserved the slot and leaving a breadcrumb if the session is abandoned:
+   ```
+   worktree pool-slot reservation (unity-batchmode-worktree skill)
+   reserved-by: <agent harness and session id, e.g. "opencode session 7f3a9c12">
+   reserved-at: <ISO 8601 UTC timestamp, e.g. 2026-08-04T21:40:00Z>
+   branch: <branch about to be checked out>
+   task: <plan/task reference>
+   stale-after: 24h - if this is older and the owning session is gone, it is safe to delete
+   ```
+   `reserved-by` is agent-agnostic: any harness name plus its session/instance id (`claude-code session 83c40206`, `opencode session 7f3a9c12`), or `user@host` for a manual, non-agent reservation. `reserved-at` is always ISO 8601 UTC in `YYYY-MM-DDTHH:MM:SSZ` form, so markers compare correctly across machines in different time zones.
+
+   Filled-in example:
+   ```
+   worktree pool-slot reservation (unity-batchmode-worktree skill)
+   reserved-by: opencode session 7f3a9c12
+   reserved-at: 2026-08-04T21:40:00Z
+   branch: fix/worktree-reserved-marker
+   task: finalize .worktree-reserved marker spec across three PRs
+   stale-after: 24h - safe to delete if reserved-at is older and the owning session is gone
+   ```
+   One short file. Never stage or commit it (add `.worktree-reserved` to `.git/info/exclude` if it isn't already globally ignored). This step can happen before or independently of acquiring a lock - creating the marker doesn't touch the slot's tracked working tree.
 3. **Lock (optional - only if `project-lock` is installed).** Acquire the `project-lock` on the slot path (`python <project-lock script> acquire <slot> --reason "<task>" --duration <estimate>`) before you do anything in step 4 that mutates the slot - reset, clean, checkout, or file edits. A lock's jurisdiction is the nearest enclosing Git worktree, so each pool slot needs its own - acquiring on the pool root or a sibling slot does nothing for this one. If `project-lock` isn't installed, skip this step; the marker from step 2 is your coordination mechanism and the protocol still holds together without it.
 4. **Prep.** In the slot: `git fetch && git reset --hard && git clean -fd`, then `git checkout -B <branch> origin/main` (or the needed base). This is the first step that actually mutates the slot, so if you acquired a lock in step 3, it must already be held before you run these commands. Unity will reimport only changed files on the next batch-mode run - `Library/` stays warm.
-5. **Release.** When the work is merged (or abandoned): if you hold a `project-lock`, release it first, then delete `.claude-reserved` and reset the slot back to a clean detached state at `main` so the next session finds it warm and obviously free. If handing a branch off mid-stream, leave the marker in place (renew or release the lock per the handoff, if one is held) and update the marker's contents to describe the handoff.
+5. **Release.** When the work is merged (or abandoned): if you hold a `project-lock`, release it first, then delete `.worktree-reserved` and reset the slot back to a clean detached state at `main` so the next session finds it warm and obviously free. If handing a branch off mid-stream, leave the marker in place (renew or release the lock per the handoff, if one is held) and update the marker's `reserved-by`/`reserved-at`/`task` fields to describe the handoff.
 
-A reservation marker is advisory on its own - a sticky note, not a lock - but it's a complete protocol by itself when `project-lock` isn't in play. If you find a stale marker (older than ~24h with no activity on its branch) with no live `project-lock` on that slot (or no `project-lock` installed at all), it's probably abandoned; flag it to the user before overwriting.
+A reservation marker is advisory on its own - a sticky note, not a lock - but it's a complete protocol by itself when `project-lock` isn't in play. If you find a marker whose `reserved-at` is older than its `stale-after` (default 24h) with no activity on its named `branch` and no live `project-lock` on that slot (or no `project-lock` installed at all), the `reserved-by` session is probably gone; reap it - delete the marker and treat the slot as free - but flag the reap to the user before overwriting the slot's working tree.
 
 ## Gotchas
 
@@ -174,4 +194,4 @@ A reservation marker is advisory on its own - a sticky note, not a lock - but it
 | Commit LF/CRLF-only diff | `git checkout --` to discard | Commit the churn |
 | Resolve `fileID` conflict | Match fileID → component type in prefab YAML | Pick one side blindly |
 | New asset | Stage `<file>` + `<file>.meta` | Commit one without the other |
-| Start a session | Read `AGENTS.md` (or `CLAUDE.md`), `git status` both trees, check divergence | Start editing blind |
+| Start a session | Read `AGENTS.md`, `git status` both trees, check divergence | Start editing blind |
