@@ -149,7 +149,8 @@ Pool slots are shared across sessions. Before doing anything in a slot, **claim 
 
 1. **Survey.** `git worktree list` to enumerate slots; for each candidate check `ls <slot>/.worktree-reserved` and, if it exists, read its contents to see who holds it (`reserved-by`), when it was claimed (`reserved-at`), and whether it's past its own `stale-after` window; also check `git -C <slot> status -sb`. A slot is free if there's no marker, or the marker is past `stale-after` with no live owner (see the reap note below) - **and** the working tree is clean. If the `project-lock` skill is installed, also check for an active lock on the slot (`python <project-lock script> check <slot>`, or the absence of a `<slot>/.agent-lock/` directory) and treat a locked slot as not free even if it has no marker. Detached HEAD at an older commit is fine - that's the warm-pool resting state.
 2. **Claim.** Write `<slot>/.worktree-reserved` with content, not just an empty touch, so the marker is self-documenting - identifying who reserved the slot and leaving a breadcrumb if the session is abandoned:
-   ```
+
+   ```text
    worktree pool-slot reservation (unity-batchmode-worktree skill)
    reserved-by: <agent harness and session id, e.g. "opencode session 7f3a9c12">
    reserved-at: <ISO 8601 UTC timestamp, e.g. 2026-08-04T21:40:00Z>
@@ -157,10 +158,12 @@ Pool slots are shared across sessions. Before doing anything in a slot, **claim 
    task: <plan/task reference>
    stale-after: 24h - if this is older and the owning session is gone, it is safe to delete
    ```
+
    `reserved-by` is agent-agnostic: any harness name plus its session/instance id (`claude-code session 83c40206`, `opencode session 7f3a9c12`), or `user@host` for a manual, non-agent reservation. `reserved-at` is always ISO 8601 UTC in `YYYY-MM-DDTHH:MM:SSZ` form, so markers compare correctly across machines in different time zones.
 
    Filled-in example:
-   ```
+
+   ```text
    worktree pool-slot reservation (unity-batchmode-worktree skill)
    reserved-by: opencode session 7f3a9c12
    reserved-at: 2026-08-04T21:40:00Z
@@ -168,6 +171,7 @@ Pool slots are shared across sessions. Before doing anything in a slot, **claim 
    task: finalize .worktree-reserved marker spec across three PRs
    stale-after: 24h - safe to delete if reserved-at is older and the owning session is gone
    ```
+
    One short file. Never stage or commit it (add `.worktree-reserved` to `.git/info/exclude` if it isn't already globally ignored). This step can happen before or independently of acquiring a lock - creating the marker doesn't touch the slot's tracked working tree.
 3. **Lock (optional - only if `project-lock` is installed).** Acquire the `project-lock` on the slot path (`python <project-lock script> acquire <slot> --reason "<task>" --duration <estimate>`) before you do anything in step 4 that mutates the slot - reset, clean, checkout, or file edits. A lock's jurisdiction is the nearest enclosing Git worktree, so each pool slot needs its own - acquiring on the pool root or a sibling slot does nothing for this one. If `project-lock` isn't installed, skip this step; the marker from step 2 is your coordination mechanism and the protocol still holds together without it.
 4. **Prep.** In the slot: `git fetch && git reset --hard && git clean -fd`, then `git checkout -B <branch> origin/main` (or the needed base). This is the first step that actually mutates the slot, so if you acquired a lock in step 3, it must already be held before you run these commands. Unity will reimport only changed files on the next batch-mode run - `Library/` stays warm.
