@@ -185,7 +185,6 @@ If the `project-lock` skill is installed, layer it in as an optional extra step.
 
 - **`sed -i` on Git Bash for Windows silently empties files.** Use the Edit tool for in-place text replacement.
 - **Never delete `Library/`, `Temp/`, or `UserSettings/`** - machine-local caches; deleting `Library/` forces a 30-minute reimport.
-- **Two Unity batch processes against the same worktree** fail on the Library lock. Track shell ids; wait for exit before relaunch.
 
 ## Quick Reference
 
