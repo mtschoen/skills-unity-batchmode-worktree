@@ -67,15 +67,15 @@ Same pattern, `-testPlatform PlayMode`. Expected runtime: 120–300s (cold reimp
 
 ## Running in the background
 
-Use `run_in_background: true` on the Bash tool call for any test run; compile checks can usually run foreground. **Record the shell id** — never start a second Unity process against the same worktree until that shell has exited (Library lock will fail hard).
+Use `run_in_background: true` on the Bash tool call for any test run; compile checks can usually run foreground. **Record the shell id** - never start a second Unity process against the same worktree until that shell has exited (Library lock will fail hard).
 
 ## Parsing results
 
-- **NUnit XML** — `<test-run result="Passed|Failed">` at root; failed tests have a `<failure>` child with stack trace
-- **Log tail** — `tail -n 100 "$RESULTS/<name>.log"` shows compile errors, stack traces, and the NUnit summary line near the bottom
+- **NUnit XML** - `<test-run result="Passed|Failed">` at root; failed tests have a `<failure>` child with stack trace
+- **Log tail** - `tail -n 100 "$RESULTS/<name>.log"` shows compile errors, stack traces, and the NUnit summary line near the bottom
 
 ## Never
 
-- Write logs outside `TestResults/` — stray files in project root or worktree root pollute git status
-- Reuse log filenames without a timestamp — older runs get clobbered
+- Write logs outside `TestResults/` - stray files in project root or worktree root pollute git status
+- Reuse log filenames without a timestamp - older runs get clobbered
 - Run two Unity batch processes against the same worktree simultaneously
